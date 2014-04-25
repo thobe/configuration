@@ -1,0 +1,180 @@
+#!/bin/sh
+
+DOMAIN=1027222886.members.btmm.icloud.com
+WIFI=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I | grep " SSID: " | cut -d: -f2)
+WIFI=$(echo $WIFI)
+if [ "APCnet" = "$WIFI" ]; then
+  DOMAIN=local
+fi
+HOST=$(basename $0)
+
+while true; do
+  case $1 in
+    btmm)
+      DOMAIN=1027222886.members.btmm.icloud.com
+      shift
+      continue
+      ;;
+    local)
+      DOMAIN=local
+      shift
+      continue
+      ;;
+    ssh)
+      shift
+      ssh $HOST.$DOMAIN "$@"
+      ;;
+    put)
+      shift
+      scp $1 $HOST.$DOMAIN:$2
+      ;;
+    get)
+      shift
+      scp $HOST.$DOMAIN:$1 $2
+      ;;
+    open)
+      shift
+      ssh $HOST.$DOMAIN /usr/bin/open "$@"
+      ;;
+    vnc)
+      open vnc://$HOST.$DOMAIN
+      ;;
+    sleep)
+      ssh -t $HOST.$DOMAIN sudo pmset sleepnow
+      ;;
+    "play"|"pause"|"next"|"prev"|"vol"|"mute")
+      set -- spotify "$@"
+      continue
+      ;;
+    download)
+      if [ "${2:0:7}" = "magnet:" ]; then
+        set -- transmission "$@"
+        continue
+      else
+        echo "Not implemented." 1>&2
+        exit 1
+      fi
+      ;;
+    spotify)
+      COMMAND=$2
+      if [ -z "$COMMAND" ]; then
+        COMMAND=status
+      fi
+      case $COMMAND in
+        status)
+          COMMAND='tell application "Spotify" to (player state as string) & ": " & (artist of current track as string) & " - " & (name of current track as string)'
+          ;;
+        track)
+          COMMAND='tell application "Spotify" to (artist of current track as string) & " - " & (name of current track as string)'
+          ;;
+        play)
+          COMMAND='tell application "Spotify" to play'
+          ;;
+        pause)
+          COMMAND='tell application "Spotify" to pause'
+          ;;
+        next)
+          COMMAND='tell application "Spotify" to next track'
+          ;;
+        prev)
+          COMMAND='tell application "Spotify" to previous track'
+          ;;
+        mute)
+          set -- spotify vol mute
+          continue
+          ;;
+        vol)
+          COMMAND=$3
+          if [ -z "$COMMAND" ]; then
+            COMMAND='tell application "Spotify" to sound volume as integer'
+          else
+            case $COMMAND in
+              up)
+                COMMAND='((sound volume as integer) + 10)'
+                ;;
+              down)
+                COMMAND='((sound volume as integer) - 10)'
+                ;;
+              mute)
+                COMMAND=0
+                ;;
+              100 | [0-9][0-9] | [0-9])
+                # COMMAND is already a numeric value.
+                ;;
+              *)
+                echo "Invalid volume value '$COMMAND'." 1>&2
+                exit 1
+                ;;
+            esac
+            COMMAND="tell application \"Spotify\" to set sound volume to $COMMAND"
+          fi
+          ;;
+        *)
+          echo "Unknown spotify command '$COMMAND'." 1>&2
+          exit 1
+          ;;
+      esac
+      ssh $HOST.$DOMAIN osascript -e "'$COMMAND'"
+      ;;
+    transmission)
+      COMMAND=$2
+      if [ -z "$COMMAND" ]; then
+        COMMAND=status
+      fi
+      case $COMMAND in
+        status)
+          echo "Not implemented." 1>&2
+          exit 1
+          ;;
+        download)
+          echo "Not implemented." 1>&2
+          exit 1
+          ;;
+        *)
+          echo "Unknown transmission command '$COMMAND'." 1>&2
+          exit 1
+          ;;
+      esac
+      ;;
+    imagesnap)
+      if [ -n "$2" ]; then
+        IMAGE="$2"
+      else
+        IMAGE=$(date "+%Y-%m-%d %H.%M.%S")
+        IMAGE=~/Desktop/"$HOST imagesnap $IMAGE.jpg"
+      fi
+      if ssh $HOST.$DOMAIN /usr/local/bin/imagesnap - > "$IMAGE"; then
+        open "$IMAGE"
+      else
+        rm "$IMAGE"
+      fi
+      ;;
+    screensaver)
+      ssh $HOST.$DOMAIN open -a /System/Library/Frameworks/ScreenSaver.framework//Versions/A/Resources/ScreenSaverEngine.app
+      ;;
+    rhett)
+      HOST=$1
+      shift
+      continue
+      ;;
+    'tell '*|'display '*)
+      ssh $HOST.$DOMAIN osascript -e "'$1'"
+      ;;
+    notify)
+      shift
+      ssh $HOST.$DOMAIN osascript -e "'display notification \"$@\" with title \"Tobias says\"'"
+      ;;
+    say)
+      shift
+      ssh $HOST.$DOMAIN say "$@"
+      ;;
+    *)
+      if [ -z "$1" ]; then
+        ssh $HOST.$DOMAIN
+      else
+        echo "Unknown command '$1'." 1>&2
+        exit -1
+      fi
+  esac
+  exit $?
+done

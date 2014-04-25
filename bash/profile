@@ -1,0 +1,129 @@
+# -*- mode: sh -*-
+export PATH=~/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/X11/bin
+
+for bash_completion in $(find -L /usr/local/etc/bash_completion.d -type f); do
+    source $bash_completion
+done
+
+export LESSOPEN="| /usr/local/bin/src-hilite-lesspipe.sh %s"
+export LESS=' -R '
+
+function __git_prompt()
+{
+  local GITDIR=$(__gitdir)
+  if [ -n "$GITDIR" ]; then
+    GITDIR=${GITDIR%.git*}
+    if [ -z "$GITDIR" ]; then
+      GITDIR=$(pwd)
+    fi
+    GITDIR=$(dirname "$GITDIR")/
+    local CURDIR=$(pwd)
+    GITDIR="${CURDIR:${#GITDIR}}"
+    __git_ps1 "$GITDIR (%s)"
+  else
+    GITDIR="$(pwd)"
+    if [ "$GITDIR" = "$HOME" ]; then
+      echo \~
+    else
+      basename "$GITDIR"
+    fi
+  fi
+}
+GIT_PS1_SHOWCOLORHINTS=true
+GIT_PS1_SHOWUPSTREAM=git
+PS1="\u@\h:\$(__git_prompt)\$ "
+
+function title()
+{
+  local TITLE="$@"
+  echo -n -e "\033]0;$TITLE\007"
+}
+
+function btmm()
+{
+  local SERVICE=$1
+  if [ -z "$SERVICE" ]; then
+    SERVICE=ssh
+  fi
+  dns-sd -B _$SERVICE._tcp
+}
+
+function showme()
+{
+  case $(type -t $1) in
+    file)
+      local FILE=$(which $1)
+      local ELIF
+      while [ -h "$FILE" ]; do
+        ELIF=$(readlink "$FILE")
+        echo $FILE is a symlink to $ELIF
+        FILE=$ELIF
+      done
+      file -p $FILE
+      if [ -t 1 ]; then
+        case $(file -Ibp $FILE) in
+          text*)
+            less $FILE
+            ;;
+        esac
+      fi
+      ;;
+    builtin)
+      type $1
+      help $1
+      ;;
+    *)
+      type $1
+      ;;
+  esac
+}
+
+function editmy()
+{
+  local FILE=$(type -p "$1")
+  if [ -n "$FILE" ]; then
+    vim "$FILE"
+    return $!
+  else
+    echo "NO FILE IN PATH: $1" 1>&2
+    return -1
+  fi
+}
+
+function jthread()
+{
+  local WATCH="$1"
+  case "$WATCH" in
+    -watch)
+      WATCH=2
+      shift
+      ;;
+    -watch=*)
+      WATCH=${WATCH:7}
+      shift
+      ;;
+    *)
+      WATCH=""
+      ;;
+  esac
+  if [ -z "$1" ]; then
+    echo "USAGE: jstackdump <process> [<thread>]" 1>&2
+    return 1
+  fi
+  local PROCESS=$(jps -l | grep $1 | cut -d\  -f1)
+  if [ -z "$PROCESS" -o $(echo "$PROCESS" | wc -l) -ne 1 ]; then
+    echo "'$1' does not uniquely identify any of the active java processes:" 1>&2
+    jps 1>&2
+    return 1
+  fi
+  local THREAD=$2
+  if [ -z "$THREAD" ]; then
+    THREAD=main
+  fi
+  local BUFFER=1000
+  if [ -z "$WATCH" ]; then
+    jstack $PROCESS | awk "/^\"$THREAD\"/,/^$/"
+  else
+    watch -n $WATCH "jstack \$(jps -l | grep \"$1\" | cut -d\\  -f1) | awk \"/^\\\"$THREAD\\\"/,/^$/\""
+  fi
+}

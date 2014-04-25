@@ -1,0 +1,4 @@
+#!/bin/sh
+QUERY=$(perl -MURI::Escape -e 'print uri_escape($ARGV[0]);' "$*")
+open https://www.google.com/search?q=$QUERY
+
